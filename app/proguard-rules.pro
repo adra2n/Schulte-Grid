@@ -1,0 +1,2 @@
+# Keep Kotlin metadata
+-dontobfuscate
