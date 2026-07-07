@@ -11,9 +11,16 @@ android {
         applicationId = "com.adrain.schultegrid"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    applicationVariants.all {
+        outputs.all {
+            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
+            output.outputFileName = "SchulteGrid-v${defaultConfig.versionName}-${name}.apk"
+        }
     }
 
     buildTypes {
