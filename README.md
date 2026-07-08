@@ -5,15 +5,17 @@
 ## 功能特性
 
 - **五档难度可调**：3×3 入门、4×4 简单、5×5 标准、6×6 困难、7×7 大师
-- **震动反馈**：点击正确短震、点击错误双脉冲、训练完成胜利节奏
-- **实时计时**：精确到 0.01 秒
-- **最佳成绩**：每个难度独立记录最佳时间（本地持久化）
-- **视觉反馈**：已点击格变绿、错误格红闪、完成弹窗
+- **两种训练模式**：正序（1→N）、倒序（N→1），倒序模式更挑战专注力
+- **震动反馈**：点击正确短震、点击错误双脉冲、训练完成胜利节奏；支持「轻/中/强」三档强度与开关
+- **音效反馈**：无需音频资源，用 ToneGenerator 合成提示音；可在设置中开关
+- **实时计时**：精确到 0.01 秒，支持游戏中「暂停 / 继续」
+- **成绩统计与历史**：每难度+模式独立记录最佳时间、平均用时、最近 10 次成绩、错误点击次数（本地持久化）
+- **视觉反馈**：已点击格变绿、错误格红闪、暂停遮罩、完成弹窗
 - **沉浸式深色 UI**，移动端竖屏优化
 
 ## 玩法
 
-按 1 → 2 → 3 → … → N 的顺序依次点击方格中的数字，越快越好。视线尽量注视方格中心，用余光寻找数字，可有效锻炼专注力与 peripheral vision（周边视野）。
+按 1 → 2 → 3 → … → N（或倒序 N → … → 1）的顺序依次点击方格中的数字，越快越好。视线尽量注视方格中心，用余光寻找数字，可有效锻炼专注力与 peripheral vision（周边视野）。
 
 ## 技术栈
 
@@ -27,11 +29,12 @@
 
 ```
 app/src/main/java/com/adrain/schultegrid/
-├── MainActivity.kt          # 入口 Activity
+├── MainActivity.kt          # 入口 Activity（viewModel 委托）
 ├── SchulteApp.kt            # Compose UI 全部界面
-├── SchulteViewModel.kt      # 游戏逻辑、计时、最佳成绩
-├── VibrationHelper.kt       # 震动反馈封装
-└── model.kt                 # 数据模型（Difficulty / GameState / CellState）
+├── SchulteViewModel.kt      # 游戏逻辑、计时、统计、历史、设置持久化
+├── VibrationHelper.kt       # 震动反馈封装（支持强度）
+├── SoundHelper.kt           # 音效反馈封装（ToneGenerator）
+└── model.kt                 # 数据模型（Difficulty / Mode / GameState / CellState / Settings）
 ```
 
 ## 构建运行
@@ -44,7 +47,7 @@ app/src/main/java/com/adrain/schultegrid/
 
 ```bash
 ./gradlew assembleDebug
-# 产物：app/build/outputs/apk/debug/app-debug.apk
+# 产物：app/build/outputs/apk/debug/SchulteGrid-v1.1-debug.apk
 ```
 
 ## 震动权限
