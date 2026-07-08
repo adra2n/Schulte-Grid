@@ -21,6 +21,7 @@ data class TrainingUiState(
     val mode: Mode = Mode.ASC,
     val gameState: GameState = GameState.IDLE,
     val paused: Boolean = false,
+    val countdown: Int? = null,
     val cells: List<CellState> = emptyList(),
     val nextExpected: Int = 1,
     val elapsedMs: Long = 0L,
@@ -45,6 +46,7 @@ class SchulteViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var timerJob: Job? = null
+    private var countdownJob: Job? = null
     private var runStartMs = 0L
     private var accumMs = 0L
 
@@ -102,14 +104,31 @@ class SchulteViewModel(app: Application) : AndroidViewModel(app) {
                 wrongCount = 0,
                 lastResultMs = null,
                 wrongIndex = null,
-                paused = false
+                paused = false,
+                countdown = 3
             )
         }
-        startTimer()
+        runCountdown()
+    }
+
+    private fun runCountdown() {
+        countdownJob?.cancel()
+        countdownJob = scope.launch {
+            var c = 3
+            while (c > 0) {
+                _uiState.update { it.copy(countdown = c) }
+                delay(700)
+                c--
+            }
+            _uiState.update { it.copy(countdown = null) }
+            startTimer()
+        }
     }
 
     fun reset() {
         stopTimer()
+        countdownJob?.cancel()
+        countdownJob = null
         accumMs = 0L
         _uiState.update {
             it.copy(
@@ -120,13 +139,14 @@ class SchulteViewModel(app: Application) : AndroidViewModel(app) {
                 wrongCount = 0,
                 lastResultMs = null,
                 wrongIndex = null,
-                paused = false
+                paused = false,
+                countdown = null
             )
         }
     }
 
     fun pause() {
-        if (_uiState.value.gameState != GameState.PLAYING || _uiState.value.paused) return
+        if (_uiState.value.gameState != GameState.PLAYING || _uiState.value.paused || _uiState.value.countdown != null) return
         pauseTimer()
     }
 
@@ -139,7 +159,7 @@ class SchulteViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clickCell(index: Int): ClickResult {
         val state = _uiState.value
-        if (state.gameState != GameState.PLAYING || state.paused) return ClickResult.NONE
+        if (state.gameState != GameState.PLAYING || state.paused || state.countdown != null) return ClickResult.NONE
         val cell = state.cells.getOrNull(index) ?: return ClickResult.NONE
 
         return if (cell.number == state.nextExpected) {
@@ -311,6 +331,12 @@ class SchulteViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun bestKey(d: Difficulty, m: Mode) = "best_${d.size}_${m.name}"
     private fun histKey(d: Difficulty, m: Mode) = "history_${d.size}_${m.name}"
+
+    override fun onCleared() {
+        super.onCleared()
+        timerJob?.cancel()
+        countdownJob?.cancel()
+    }
 
     companion object {
         private const val PREFS_NAME = "schulte_best"

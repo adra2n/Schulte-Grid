@@ -1,8 +1,22 @@
 package com.adrain.schultegrid
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.repeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,6 +41,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -36,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +60,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +77,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timer
 import kotlin.math.max
 
@@ -93,11 +113,25 @@ fun SchulteApp(viewModel: SchulteViewModel) {
     val sound = remember { SoundHelper() }
     var showSettings by remember { mutableStateOf(false) }
 
+    // 倒计时滴答震动反馈
+    LaunchedEffect(state.countdown) {
+        if (state.countdown != null && state.settings.vibrationEnabled) {
+            vibration.correct(VibrationStrength.LIGHT)
+        }
+    }
+
     MaterialTheme(colorScheme = SchulteScheme) {
         Surface(modifier = Modifier.fillMaxSize(), color = BgDark) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Primary.copy(alpha = 0.18f), BgDark, BgDark),
+                            startY = 0f,
+                            endY = 360f
+                        )
+                    )
                     .padding(horizontal = 16.dp)
                     .padding(top = 12.dp, bottom = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -129,10 +163,7 @@ fun SchulteApp(viewModel: SchulteViewModel) {
                 // 平均 & 错误次数（游戏中/完成后显示）
                 if (state.gameState != GameState.IDLE) {
                     Spacer(Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                         Text(
                             "平均 ${state.avgMs?.let { formatTime(it) } ?: "--"}   ·   错误 ${state.wrongCount}",
                             color = TextSub, fontSize = 12.sp
@@ -145,6 +176,7 @@ fun SchulteApp(viewModel: SchulteViewModel) {
                 ActionButtons(
                     gameState = state.gameState,
                     paused = state.paused,
+                    countdown = state.countdown,
                     onMain = {
                         when {
                             state.gameState == GameState.PLAYING && !state.paused -> viewModel.pause()
@@ -156,12 +188,25 @@ fun SchulteApp(viewModel: SchulteViewModel) {
                     onReset = { viewModel.reset() }
                 )
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
+
+                // 进度条
+                val progress = when {
+                    state.gameState != GameState.PLAYING -> 0f
+                    state.mode == Mode.ASC -> (state.nextExpected - 1).toFloat() / state.difficulty.total
+                    else -> (state.difficulty.total - state.nextExpected + 1).toFloat() / state.difficulty.total
+                }
+                LinearProgressIndicator(
+                    progress = { progress.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color = PrimaryLight,
+                    trackColor = CardBg
+                )
+
+                Spacer(Modifier.height(10.dp))
 
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
                     SchulteGrid(state = state) { index ->
@@ -182,11 +227,10 @@ fun SchulteApp(viewModel: SchulteViewModel) {
                         }
                     }
 
+                    // 暂停遮罩
                     if (state.gameState == GameState.PLAYING && state.paused) {
                         Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(BgDark.copy(alpha = 0.78f)),
+                            modifier = Modifier.matchParentSize().background(BgDark.copy(alpha = 0.82f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -196,6 +240,16 @@ fun SchulteApp(viewModel: SchulteViewModel) {
                                 Spacer(Modifier.height(4.dp))
                                 Text("点击「继续」恢复训练", color = TextSub, fontSize = 12.sp)
                             }
+                        }
+                    }
+
+                    // 倒计时遮罩
+                    if (state.countdown != null) {
+                        Box(
+                            modifier = Modifier.matchParentSize().background(BgDark.copy(alpha = 0.88f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CountdownNumber(state.countdown!!)
                         }
                     }
                 }
@@ -254,11 +308,7 @@ private fun Header(onSettings: () -> Unit) {
 }
 
 @Composable
-private fun DifficultySelector(
-    current: Difficulty,
-    enabled: Boolean,
-    onSelect: (Difficulty) -> Unit
-) {
+private fun DifficultySelector(current: Difficulty, enabled: Boolean, onSelect: (Difficulty) -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Difficulty.values().forEach { d ->
             val selected = d == current
@@ -267,7 +317,7 @@ private fun DifficultySelector(
                     .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(if (selected) Primary else CardBg)
-                    .clickable(enabled = enabled) { onSelect(d) }
+                    .clickable(enabled = enabled, onClick = { onSelect(d) })
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -279,11 +329,7 @@ private fun DifficultySelector(
 }
 
 @Composable
-private fun ModeSelector(
-    current: Mode,
-    enabled: Boolean,
-    onSelect: (Mode) -> Unit
-) {
+private fun ModeSelector(current: Mode, enabled: Boolean, onSelect: (Mode) -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Mode.values().forEach { m ->
             val selected = m == current
@@ -292,7 +338,7 @@ private fun ModeSelector(
                     .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(if (selected) PrimaryLight else CardBg)
-                    .clickable(enabled = enabled) { onSelect(m) }
+                    .clickable(enabled = enabled, onClick = { onSelect(m) })
                     .padding(vertical = 7.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -303,11 +349,7 @@ private fun ModeSelector(
 }
 
 @Composable
-private fun StatsRow(
-    elapsedMs: Long,
-    nextExpected: String,
-    bestMs: Long?
-) {
+private fun StatsRow(elapsedMs: Long, nextExpected: String, bestMs: Long?) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         StatCard(modifier = Modifier.weight(1f), icon = Icons.Filled.Timer, label = "用时", value = formatTime(elapsedMs))
         StatCard(modifier = Modifier.weight(1f), icon = Icons.Filled.Psychology, label = "下一个", value = nextExpected, highlight = true)
@@ -343,6 +385,7 @@ private fun StatCard(
 private fun ActionButtons(
     gameState: GameState,
     paused: Boolean,
+    countdown: Int?,
     onMain: () -> Unit,
     onReset: () -> Unit
 ) {
@@ -360,9 +403,13 @@ private fun ActionButtons(
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Button(
             onClick = onMain,
+            enabled = countdown == null,
             modifier = Modifier.weight(1f).height(46.dp),
             shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White)
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Primary, contentColor = Color.White,
+                disabledContainerColor = CardBg, disabledContentColor = TextSub
+            )
         ) {
             if (mainIcon != null) {
                 Icon(mainIcon, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -377,24 +424,12 @@ private fun ActionButtons(
 }
 
 @Composable
-private fun SchulteGrid(
-    state: TrainingUiState,
-    onTap: (Int) -> Unit
-) {
+private fun SchulteGrid(state: TrainingUiState, onTap: (Int) -> Unit) {
     val size = state.difficulty.size
     val cells = state.cells
 
     if (cells.isEmpty()) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("🎯", fontSize = 48.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("选择难度后点击「开始训练」", color = TextSub, fontSize = 14.sp)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                if (state.mode == Mode.ASC) "按 1, 2, 3 … 顺序点击数字" else "按 N, N-1 … 顺序点击数字",
-                color = TextSub.copy(alpha = 0.7f), fontSize = 12.sp
-            )
-        }
+        EmptyState(mode = state.mode)
         return
     }
 
@@ -414,7 +449,7 @@ private fun SchulteGrid(
                 Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                     for (col in 0 until size) {
                         val index = row * size + col
-                        Cell(cell = cells[index], sizeDp = cellSize.dp, onClick = { onTap(index) })
+                        Cell(cell = cells[index], sizeDp = cellSize.dp, canTap = state.countdown == null, onClick = { onTap(index) })
                     }
                 }
             }
@@ -423,7 +458,7 @@ private fun SchulteGrid(
 }
 
 @Composable
-private fun Cell(cell: CellState, sizeDp: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+private fun Cell(cell: CellState, sizeDp: androidx.compose.ui.unit.Dp, canTap: Boolean, onClick: () -> Unit) {
     val bg = when (cell.status) {
         CellStatus.DEFAULT -> CellBg
         CellStatus.DONE -> CellDone
@@ -434,28 +469,99 @@ private fun Cell(cell: CellState, sizeDp: androidx.compose.ui.unit.Dp, onClick: 
         CellStatus.DONE -> CellDoneText
         CellStatus.WRONG -> Color.White
     }
+
+    // 正确：弹跳缩放（先放大再回弹）
+    val popScale = remember { Animatable(1f) }
+    LaunchedEffect(cell.status) {
+        if (cell.status == CellStatus.DONE) {
+            popScale.snapTo(1.18f)
+            popScale.animateTo(1f, spring(stiffness = 600f, dampingRatio = 0.5f))
+        } else {
+            popScale.snapTo(1f)
+        }
+    }
+
+    // 错误：左右抖动
+    val shake = remember { Animatable(0f) }
+    LaunchedEffect(cell.status) {
+        if (cell.status == CellStatus.WRONG) {
+            repeat(3) {
+                shake.animateTo(7f, spring(stiffness = 1200f, dampingRatio = 0.3f))
+                shake.animateTo(-7f, spring(stiffness = 1200f, dampingRatio = 0.3f))
+            }
+            shake.animateTo(0f)
+        } else {
+            shake.snapTo(0f)
+        }
+    }
+
+    val digits = cell.number.toString().length
+    val fontSize = (sizeDp.value * (if (digits <= 1) 0.42f else 0.32f)).sp
+
     Box(
         modifier = Modifier
             .size(sizeDp)
+            .graphicsLayer {
+                scaleX = popScale.value
+                scaleY = popScale.value
+                translationX = shake.value
+            }
             .clip(RoundedCornerShape(10.dp))
             .background(bg)
             .clickable(
+                enabled = canTap,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             ),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = cell.number.toString(), color = fg, fontSize = (sizeDp.value * 0.42f).sp, fontWeight = FontWeight.SemiBold)
+        Text(text = cell.number.toString(), color = fg, fontSize = fontSize, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
+private fun EmptyState(mode: Mode) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        val transition = rememberInfiniteTransition(label = "pulse")
+        val pulse by transition.animateFloat(1f, 1.12f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pulse")
+        Box(modifier = Modifier.size((56 * pulse).dp)) {
+            Text("🎯", fontSize = 48.sp)
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("选择难度后点击「开始训练」", color = TextSub, fontSize = 14.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (mode == Mode.ASC) "按 1, 2, 3 … 顺序点击数字" else "按 N, N-1 … 顺序点击数字",
+            color = TextSub.copy(alpha = 0.7f), fontSize = 12.sp
+        )
+    }
+}
+
+@Composable
+private fun CountdownNumber(value: Int) {
+    val scale by animateFloatAsState(
+        targetValue = 1.4f,
+        animationSpec = keyframes {
+            durationMillis = 700
+            0.6f at 0
+            1.4f at 350
+            1.4f at 700
+        },
+        label = "countdownScale"
+    )
+    Text(
+        text = value.toString(),
+        color = PrimaryLight,
+        fontSize = 96.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.scale(scale)
+    )
+}
+
+@Composable
 private fun TipsSection() {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         TipItem("👆", "按顺序点击数字，越快越好")
         TipItem("📳", "可在「设置」中开关震动与音效")
         TipItem("👁️", "视线注视中心，余光找数字")
@@ -496,7 +602,6 @@ private fun SettingsDialog(
                     Switch(checked = settings.vibrationEnabled, onCheckedChange = onVibration,
                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Primary))
                 }
-                // 震动强度
                 Column {
                     Text("震动强度", color = TextSub, fontSize = 12.sp)
                     Spacer(Modifier.height(6.dp))
@@ -508,7 +613,7 @@ private fun SettingsDialog(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(if (sel) Primary else CardBg)
-                                    .clickable(enabled = settings.vibrationEnabled) { onStrength(s) }
+                                    .clickable(enabled = settings.vibrationEnabled, onClick = { onStrength(s) })
                                     .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -526,9 +631,7 @@ private fun SettingsDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("完成", color = PrimaryLight) }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成", color = PrimaryLight) } }
     )
 }
 
@@ -540,7 +643,7 @@ private fun SettingRow(label: String, control: @Composable () -> Unit) {
     }
 }
 
-/* ---------------- 结果弹窗（含统计与历史） ---------------- */
+/* ---------------- 结果弹窗（含统计、评级与历史） ---------------- */
 
 @Composable
 private fun ResultDialog(
@@ -555,6 +658,7 @@ private fun ResultDialog(
     onAgain: () -> Unit
 ) {
     val isBest = bestMs != null && resultMs <= bestMs
+    val stars = rateResult(difficulty, resultMs, wrongCount)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CardBg,
@@ -562,13 +666,28 @@ private fun ResultDialog(
         title = { Text(if (isBest) "🎉 新纪录！" else "✅ 训练完成", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("${difficulty.label} · ${difficulty.desc} · ${mode.label}", color = TextSub, fontSize = 12.sp)
+                // 星级评级
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    repeat(3) { i ->
+                        val filled = i < stars
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = null,
+                            tint = if (filled) Color(0xFFFFD54F) else TextSub.copy(alpha = 0.4f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("${difficulty.label} · ${difficulty.desc} · ${mode.label}", color = TextSub, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 Spacer(Modifier.height(6.dp))
-                Text("用时 ${formatTime(resultMs)}", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("用时 ${formatTime(resultMs)}", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     Text("最佳 ${bestMs?.let { formatTime(it) } ?: "--"}", color = PrimaryLight, fontSize = 13.sp)
+                    Spacer(Modifier.width(16.dp))
                     Text("平均 ${avgMs?.let { formatTime(it) } ?: "--"}", color = TextSub, fontSize = 13.sp)
+                    Spacer(Modifier.width(16.dp))
                     Text("错误 $wrongCount", color = TextSub, fontSize = 13.sp)
                 }
                 if (history.isNotEmpty()) {
@@ -579,16 +698,10 @@ private fun ResultDialog(
                     }
                     Spacer(Modifier.height(6.dp))
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(120.dp)
-                            .verticalScroll(rememberScrollState())
+                        modifier = Modifier.fillMaxWidth().height(120.dp).verticalScroll(rememberScrollState())
                     ) {
                         history.reversed().forEachIndexed { i, t ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
+                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("#${i + 1}", color = TextSub, fontSize = 12.sp)
                                 Text(formatTime(t), color = TextMain, fontSize = 12.sp)
                             }
@@ -602,9 +715,7 @@ private fun ResultDialog(
                 Text("再来一局")
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("返回", color = TextSub) }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("返回", color = TextSub) } }
     )
 }
 
