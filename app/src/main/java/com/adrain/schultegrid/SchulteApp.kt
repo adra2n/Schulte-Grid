@@ -679,6 +679,17 @@ private fun ResultDialog(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+                // 文字评价（按用时与错误次数）
+                val evaluation = evaluateResult(difficulty, resultMs, wrongCount)
+                Text(
+                    evaluation,
+                    color = PrimaryLight,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
                 Text("${difficulty.label} · ${difficulty.desc} · ${mode.label}", color = TextSub, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 Spacer(Modifier.height(6.dp))
                 Text("用时 ${formatTime(resultMs)}", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
